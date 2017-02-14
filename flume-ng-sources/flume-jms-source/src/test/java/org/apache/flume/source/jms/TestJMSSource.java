@@ -84,7 +84,8 @@ public class TestJMSSource extends JMSMessageConsumerTestBase {
                                 anyString(), any(JMSDestinationType.class),
                                 any(JMSDestinationLocator.class), anyString(), anyInt(), anyLong(),
                                 any(JMSMessageConverter.class), any(Optional.class),
-                                any(Optional.class))).thenReturn(consumer);
+                                any(Optional.class), any(Optional.class),
+                                anyBoolean(), anyString())).thenReturn(consumer);
     when(initialContext.lookup(anyString())).thenReturn(connectionFactory);
     contextFactory = mock(InitialContextFactory.class);
     when(contextFactory.create(any(Properties.class))).thenReturn(initialContext);
@@ -150,7 +151,8 @@ public class TestJMSSource extends JMSMessageConsumerTestBase {
                                 anyString(), any(JMSDestinationType.class),
                                 any(JMSDestinationLocator.class), anyString(), anyInt(), anyLong(),
                                 any(JMSMessageConverter.class), any(Optional.class),
-                                any(Optional.class))).thenThrow(new RuntimeException());
+                                any(Optional.class), any(Optional.class),
+                                anyBoolean(), anyString())).thenThrow(new RuntimeException());
     source.configure(context);
     source.start();
     try {

@@ -72,6 +72,9 @@ public class JMSSource extends AbstractPollableSource {
   private SourceCounter sourceCounter;
   private int errorThreshold;
   private long pollTimeout;
+  private Optional<String> clientId;
+  private boolean createDurableSubscription;
+  private String durableSubscriptionName;
 
   private int jmsExceptionCounter;
   private InitialContext initialContext;
@@ -120,6 +123,13 @@ public class JMSSource extends AbstractPollableSource {
 
     pollTimeout = context.getLong(JMSSourceConfiguration.POLL_TIMEOUT,
         JMSSourceConfiguration.POLL_TIMEOUT_DEFAULT);
+
+    clientId = Optional.fromNullable(context.getString(JMSSourceConfiguration.CLIENT_ID));
+
+    createDurableSubscription = context.getBoolean(
+        JMSSourceConfiguration.CREATE_DURABLE_SUBSCRIPTION, false);
+    durableSubscriptionName = context.getString(
+        JMSSourceConfiguration.DURABLE_SUBSCRIPTION_NAME, "");
 
     String passwordFile = context.getString(JMSSourceConfiguration.PASSWORD_FILE, "").trim();
 
@@ -191,6 +201,24 @@ public class JMSSource extends AbstractPollableSource {
     } catch (IllegalArgumentException e) {
       throw new FlumeException(String.format("Destination type '%s' is " +
           "invalid.", destinationTypeName), e);
+    }
+
+    if (createDurableSubscription) {
+      if (JMSDestinationType.TOPIC != destinationType) {
+        throw new FlumeException(String.format(
+            "Only Destination type '%s' supports durable subscriptions.",
+            JMSDestinationType.TOPIC.toString()));
+      }
+      if (!clientId.isPresent()) {
+        throw new FlumeException(String.format(
+            "You have to specify '%s' when using durable subscriptions.",
+            JMSSourceConfiguration.CLIENT_ID));
+      }
+      if ("".equals(durableSubscriptionName)) {
+        throw new FlumeException(String.format("If '%s' is set to true, '%s' has to be specified.",
+            JMSSourceConfiguration.CREATE_DURABLE_SUBSCRIPTION,
+            JMSSourceConfiguration.DURABLE_SUBSCRIPTION_NAME));
+      }
     }
 
     try {
@@ -316,7 +344,8 @@ public class JMSSource extends AbstractPollableSource {
     logger.info("Creating new consumer for " + destinationName);
     JMSMessageConsumer consumer = consumerFactory.create(initialContext,
         connectionFactory, destinationName, destinationType, destinationLocator,
-        messageSelector, batchSize, pollTimeout, converter, userName, password);
+        messageSelector, batchSize, pollTimeout, converter, userName, password, clientId,
+        createDurableSubscription, durableSubscriptionName);
     jmsExceptionCounter = 0;
     return consumer;
   }

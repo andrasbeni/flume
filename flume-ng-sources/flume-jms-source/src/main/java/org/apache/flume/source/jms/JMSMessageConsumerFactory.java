@@ -28,9 +28,11 @@ public class JMSMessageConsumerFactory {
       String destinationName, JMSDestinationType destinationType,
       JMSDestinationLocator destinationLocator, String messageSelector, int batchSize,
       long pollTimeout, JMSMessageConverter messageConverter,
-      Optional<String> userName, Optional<String> password) {
+      Optional<String> userName, Optional<String> password, Optional<String> clientId,
+      boolean createDurableSubscription, String durableSubscriptionName) {
     return new JMSMessageConsumer(initialContext, connectionFactory, destinationName,
         destinationLocator, destinationType, messageSelector, batchSize, pollTimeout,
-        messageConverter, userName, password);
+        messageConverter, userName, password, clientId, 
+        createDurableSubscription, durableSubscriptionName);
   }
 }
