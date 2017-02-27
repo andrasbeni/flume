@@ -32,9 +32,15 @@ public class NetcatSourceConfigurationConstants {
 
 
   /**
-   * Ack every event received with an "OK" back to the sender
+   * Ack every event received with a message back to the sender
    */
   public static final String CONFIG_ACKEVENT = "ack-every-event";
+
+  /**
+   * Ack message to send back to sender after receiving an event.
+   */
+  public static final String CONFIG_ACKNOWLEDGEMENT_MESSAGE = "ack-message";
+  public static final String DEFAULT_ACKNOWLEDGEMENT_MESSAGE = "OK\n";
 
   /**
    * Maximum line length per event.

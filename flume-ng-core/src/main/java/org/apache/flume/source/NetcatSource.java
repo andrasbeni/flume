@@ -67,41 +67,6 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
  * Most testing has been done by using the <tt>nc</tt> client but other,
  * similarly implemented, clients should work just fine.
  * </p>
- * <p>
- * <b>Configuration options</b>
- * </p>
- * <table>
- * <tr>
- * <th>Parameter</th>
- * <th>Description</th>
- * <th>Unit / Type</th>
- * <th>Default</th>
- * </tr>
- * <tr>
- * <td><tt>bind</tt></td>
- * <td>The hostname or IP to which the source will bind.</td>
- * <td>Hostname or IP / String</td>
- * <td>none (required)</td>
- * </tr>
- * <tr>
- * <td><tt>port</tt></td>
- * <td>The port to which the source will bind and listen for events.</td>
- * <td>TCP port / int</td>
- * <td>none (required)</td>
- * </tr>
- * <tr>
- * <td><tt>max-line-length</tt></td>
- * <td>The maximum # of chars a line can be per event (including newline).</td>
- * <td>Number of UTF-8 characters / int</td>
- * <td>512</td>
- * </tr>
- * </table>
- * <p>
- * <b>Metrics</b>
- * </p>
- * <p>
- * TODO
- * </p>
  */
 public class NetcatSource extends AbstractSource implements Configurable,
     EventDrivenSource {
@@ -114,6 +79,7 @@ public class NetcatSource extends AbstractSource implements Configurable,
   private int maxLineLength;
   private boolean ackEveryEvent;
   private String sourceEncoding;
+  private String ackMessage;
 
   private CounterGroup counterGroup;
   private ServerSocketChannel serverSocket;
@@ -147,6 +113,10 @@ public class NetcatSource extends AbstractSource implements Configurable,
         NetcatSourceConfigurationConstants.CONFIG_SOURCE_ENCODING,
         NetcatSourceConfigurationConstants.DEFAULT_ENCODING
     );
+    ackMessage = context.getString(
+        NetcatSourceConfigurationConstants.CONFIG_ACKNOWLEDGEMENT_MESSAGE,
+        NetcatSourceConfigurationConstants.DEFAULT_ACKNOWLEDGEMENT_MESSAGE
+    );
   }
 
   @Override
@@ -179,6 +149,7 @@ public class NetcatSource extends AbstractSource implements Configurable,
     acceptRunnable.handlerService = handlerService;
     acceptRunnable.shouldStop = acceptThreadShouldStop;
     acceptRunnable.ackEveryEvent = ackEveryEvent;
+    acceptRunnable.ackMessage = ackMessage;
     acceptRunnable.source = this;
     acceptRunnable.serverSocket = serverSocket;
     acceptRunnable.sourceEncoding = sourceEncoding;
@@ -257,6 +228,7 @@ public class NetcatSource extends AbstractSource implements Configurable,
     private EventDrivenSource source;
     private AtomicBoolean shouldStop;
     private boolean ackEveryEvent;
+    private String ackMessage;
     private String sourceEncoding;
 
     private final int maxLineLength;
@@ -279,6 +251,7 @@ public class NetcatSource extends AbstractSource implements Configurable,
           request.counterGroup = counterGroup;
           request.source = source;
           request.ackEveryEvent = ackEveryEvent;
+          request.ackMessage = ackMessage;
           request.sourceEncoding = sourceEncoding;
 
           handlerService.submit(request);
@@ -302,6 +275,7 @@ public class NetcatSource extends AbstractSource implements Configurable,
     private CounterGroup counterGroup;
     private SocketChannel socketChannel;
     private boolean ackEveryEvent;
+    private String ackMessage;
     private String sourceEncoding;
 
     private final int maxLineLength;
@@ -313,7 +287,6 @@ public class NetcatSource extends AbstractSource implements Configurable,
     @Override
     public void run() {
       logger.debug("Starting connection handler");
-      Event event = null;
 
       try {
         Reader reader = Channels.newReader(socketChannel, sourceEncoding);
@@ -413,8 +386,8 @@ public class NetcatSource extends AbstractSource implements Configurable,
             if (ex == null) {
               counterGroup.incrementAndGet("events.processed");
               numProcessed++;
-              if (true == ackEveryEvent) {
-                writer.write("OK\n");
+              if (ackEveryEvent) {
+                writer.write(ackMessage);
               }
             } else {
               counterGroup.incrementAndGet("events.failed");

@@ -40,6 +40,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -220,6 +221,40 @@ public class TestNetcatSource {
   }
 
   /**
+   * Test if the correct ack message is sent for every event
+   *
+   * @throws InterruptedException
+   * @throws IOException
+   */
+  @Test
+  public void testAckMessage() throws InterruptedException, IOException {
+    String encoding = "UTF-8";
+    char ackMessage = 6;
+    startSource(encoding, "true", "1", "512", "\u0006");
+    Socket netcatSocket = new Socket(localhost, selectedPort);
+    InputStreamReader inputLineIterator = new InputStreamReader(netcatSocket.getInputStream(), encoding);
+    try {
+      // Test on english text snippet
+      for (int i = 0; i < 20; i++) {
+        sendEvent(netcatSocket, english, encoding);
+        Assert.assertArrayEquals("Channel contained our event", english.getBytes(defaultCharset),
+            getFlumeEvent());
+        Assert.assertEquals("Socket contained the correct ack", ackMessage, inputLineIterator.read());
+      }
+      // Test on french text snippet
+      for (int i = 0; i < 20; i++) {
+        sendEvent(netcatSocket, french, encoding);
+        Assert.assertArrayEquals("Channel contained our event", french.getBytes(defaultCharset),
+            getFlumeEvent());
+        Assert.assertEquals("Socket contained the correct ack", ackMessage, inputLineIterator.read());
+      }
+    } finally {
+      netcatSocket.close();
+      stopSource();
+    }
+  }
+
+  /**
    * Test if an ack is sent for every event in the correct encoding
    *
    * @throws InterruptedException
@@ -306,6 +341,12 @@ public class TestNetcatSource {
   }
 
   private void startSource(String encoding, String ack, String batchSize, String maxLineLength)
+	      throws InterruptedException {
+	  startSource(encoding, ack, batchSize, maxLineLength, "OK\n");
+  }
+  
+  private void startSource(String encoding, String ack, String batchSize, String maxLineLength,
+		  String ackMessage)
       throws InterruptedException {
     boolean bound = false;
 
@@ -315,6 +356,7 @@ public class TestNetcatSource {
         context.put("port", String.valueOf(selectedPort = 10500 + i));
         context.put("bind", "0.0.0.0");
         context.put("ack-every-event", ack);
+        context.put("ack-message", ackMessage);
         context.put("encoding", encoding);
         context.put("batch-size", batchSize);
         context.put("max-line-length", maxLineLength);
