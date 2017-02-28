@@ -1488,7 +1488,8 @@ Property Name    Default      Description
 **bind**         --           Host name or IP address to bind to
 **port**         --           Port # to bind to
 max-line-length  512          Max line length per event body (in bytes)
-ack-every-event  true         Respond with an "OK" for every event received
+ack-every-event  true         Respond for every event received
+ack-message      "OK\\n"      The response message sent back after receiving an event.
 selector.type    replicating  replicating or multiplexing
 selector.*                    Depends on the selector.type value
 interceptors     --           Space-separated list of interceptors
@@ -3145,7 +3146,7 @@ pollTimeout                              500                         The amount 
                                                                      https://kafka.apache.org/090/javadoc/org/apache/kafka/clients/consumer/KafkaConsumer.html#poll(long)
 defaultPartitionId                       --                          Specifies a Kafka partition ID (integer) for all events in this channel to be sent to, unless
                                                                      overriden by ``partitionIdHeader``. By default, if this property is not set, events will be
-                                                                     distributed by the Kafka Producer's partitioner - including by ``key`` if specified (or by a 
+                                                                     distributed by the Kafka Producer's partitioner - including by ``key`` if specified (or by a
                                                                      partitioner specified by ``kafka.partitioner.class``).
 partitionIdHeader                        --                          When set, the producer will take the value of the field named using the value of this property
                                                                      from the event header and send the message to the specified partition of the topic. If the
