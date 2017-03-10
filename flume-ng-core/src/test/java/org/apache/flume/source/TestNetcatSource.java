@@ -20,6 +20,7 @@
 package org.apache.flume.source;
 
 import org.apache.commons.io.IOUtils;
+
 import org.apache.commons.io.LineIterator;
 import org.apache.flume.Channel;
 import org.apache.flume.ChannelSelector;
@@ -27,7 +28,6 @@ import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.Transaction;
 import org.apache.flume.channel.ChannelProcessor;
-import org.apache.flume.channel.MemoryChannel;
 import org.apache.flume.channel.ReplicatingChannelSelector;
 import org.apache.flume.conf.Configurables;
 import org.apache.flume.lifecycle.LifecycleController;
@@ -36,8 +36,15 @@ import org.jboss.netty.channel.ChannelException;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -46,8 +53,10 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collections;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 public class TestNetcatSource {
   private static final Logger logger =
@@ -79,23 +88,34 @@ public class TestNetcatSource {
   private Charset defaultCharset = Charset.forName("UTF-8");
 
   /**
-   * We set up the the Netcat source and Flume Memory Channel on localhost
-   *
-   * @throws UnknownHostException
+   * We set up the the Netcat source with a mock Channel on localhost
    */
   @Before
   public void setUp() throws UnknownHostException {
     localhost = InetAddress.getByName("127.0.0.1");
     source = new NetcatSource();
-    channel = new MemoryChannel();
+    final BlockingQueue<Event> channelsQueue = new ArrayBlockingQueue<>(100);
+    channel = mock(Channel.class);
+    when(channel.getTransaction()).thenReturn(mock(Transaction.class));
+    doAnswer(new Answer<Void>() {
+      @Override
+      public Void answer(InvocationOnMock invocation) throws Throwable {
+        Event event = (Event) invocation.getArguments()[0];
+        channelsQueue.put(event);
+        return null;
+      }
+    }).when(channel).put(Mockito.<Event>any());
+    doAnswer(new Answer<Event>() {
+      @Override
+      public Event answer(InvocationOnMock invocation) throws Throwable {
+        return channelsQueue.poll(1, TimeUnit.SECONDS);
+      }
+    }).when(channel).take();
 
     Configurables.configure(channel, new Context());
 
-    List<Channel> channels = new ArrayList<Channel>();
-    channels.add(channel);
-
     ChannelSelector rcs = new ReplicatingChannelSelector();
-    rcs.setChannels(channels);
+    rcs.setChannels(Collections.singletonList(channel));
 
     source.setChannelProcessor(new ChannelProcessor(rcs));
   }
@@ -222,65 +242,41 @@ public class TestNetcatSource {
 
   /**
    * Test if the correct ack message is sent for every event
-   *
-   * @throws InterruptedException
-   * @throws IOException
    */
   @Test
-  public void testAckMessage() throws InterruptedException, IOException {
-    String encoding = "UTF-8";
-    char ackMessage = 6;
-    startSource(encoding, "true", "1", "512", "\u0006");
-    Socket netcatSocket = new Socket(localhost, selectedPort);
-    InputStreamReader inputLineIterator = new InputStreamReader(netcatSocket.getInputStream(), encoding);
-    try {
-      // Test on english text snippet
-      for (int i = 0; i < 20; i++) {
-        sendEvent(netcatSocket, english, encoding);
-        Assert.assertArrayEquals("Channel contained our event", english.getBytes(defaultCharset),
-            getFlumeEvent());
-        Assert.assertEquals("Socket contained the correct ack", ackMessage, inputLineIterator.read());
-      }
-      // Test on french text snippet
-      for (int i = 0; i < 20; i++) {
-        sendEvent(netcatSocket, french, encoding);
-        Assert.assertArrayEquals("Channel contained our event", french.getBytes(defaultCharset),
-            getFlumeEvent());
-        Assert.assertEquals("Socket contained the correct ack", ackMessage, inputLineIterator.read());
-      }
-    } finally {
-      netcatSocket.close();
-      stopSource();
-    }
+  public void testCustomAckMessage() throws InterruptedException, IOException {
+    testAcknowledgement(english, new char[] {6}, "\u0006");
+    testAcknowledgement(french, new char[] {6}, "\u0006");
   }
 
   /**
-   * Test if an ack is sent for every event in the correct encoding
-   *
-   * @throws InterruptedException
-   * @throws IOException
+   * Test if the default ack message is sent for every event in the correct encoding
    */
   @Test
-  public void testAck() throws InterruptedException, IOException {
+  public void testDefaultAckMessage() throws InterruptedException, IOException {
+    testAcknowledgement(english,
+        NetcatSourceConfigurationConstants.DEFAULT_ACKNOWLEDGEMENT_MESSAGE.toCharArray(),
+        null);
+    testAcknowledgement(french,
+        NetcatSourceConfigurationConstants.DEFAULT_ACKNOWLEDGEMENT_MESSAGE.toCharArray(),
+        null);
+  }
+
+  private void testAcknowledgement(String eventBody, char[] expectedAck, String configuredAck)
+      throws InterruptedException, IOException { 
     String encoding = "UTF-8";
-    String ackEvent = "OK";
-    startSource(encoding, "true", "1", "512");
+    char[] actualAck = new char[expectedAck.length];
+    startSource(encoding, "true", "1", "512", configuredAck);
     Socket netcatSocket = new Socket(localhost, selectedPort);
-    LineIterator inputLineIterator = IOUtils.lineIterator(netcatSocket.getInputStream(), encoding);
+    InputStreamReader ackReader = new InputStreamReader(netcatSocket.getInputStream(), encoding);
     try {
-      // Test on english text snippet
       for (int i = 0; i < 20; i++) {
-        sendEvent(netcatSocket, english, encoding);
-        Assert.assertArrayEquals("Channel contained our event", english.getBytes(defaultCharset),
+        sendEvent(netcatSocket, eventBody, encoding);
+        Assert.assertArrayEquals("Channel contained our event", eventBody.getBytes(defaultCharset),
             getFlumeEvent());
-        Assert.assertEquals("Socket contained the Ack", ackEvent, inputLineIterator.nextLine());
-      }
-      // Test on french text snippet
-      for (int i = 0; i < 20; i++) {
-        sendEvent(netcatSocket, french, encoding);
-        Assert.assertArrayEquals("Channel contained our event", french.getBytes(defaultCharset),
-            getFlumeEvent());
-        Assert.assertEquals("Socket contained the Ack", ackEvent, inputLineIterator.nextLine());
+        Assert.assertEquals("Could read acknowledgement fully",
+            expectedAck.length, ackReader.read(actualAck));
+        Assert.assertArrayEquals("Socket contained the correct ack", expectedAck, actualAck);
       }
     } finally {
       netcatSocket.close();
@@ -341,13 +337,12 @@ public class TestNetcatSource {
   }
 
   private void startSource(String encoding, String ack, String batchSize, String maxLineLength)
-	      throws InterruptedException {
-	  startSource(encoding, ack, batchSize, maxLineLength, "OK\n");
-  }
-  
-  private void startSource(String encoding, String ack, String batchSize, String maxLineLength,
-		  String ackMessage)
       throws InterruptedException {
+    startSource(encoding, ack, batchSize, maxLineLength, null);
+  }
+
+  private void startSource(String encoding, String ack, String batchSize, String maxLineLength,
+      String ackMessage) throws InterruptedException {
     boolean bound = false;
 
     for (int i = 0; i < 100 && !bound; i++) {
@@ -356,7 +351,9 @@ public class TestNetcatSource {
         context.put("port", String.valueOf(selectedPort = 10500 + i));
         context.put("bind", "0.0.0.0");
         context.put("ack-every-event", ack);
-        context.put("ack-message", ackMessage);
+        if (ackMessage != null) {
+          context.put("ack-message", ackMessage);
+        }
         context.put("encoding", encoding);
         context.put("batch-size", batchSize);
         context.put("max-line-length", maxLineLength);
@@ -386,39 +383,11 @@ public class TestNetcatSource {
   }
 
   private byte[] getFlumeEvent() {
-    Transaction transaction = channel.getTransaction();
-    transaction.begin();
-
-    Event event = channel.take();
-    Assert.assertNotNull(event);
-
-    try {
-      transaction.commit();
-    } catch (Throwable t) {
-      transaction.rollback();
-    } finally {
-      transaction.close();
-    }
-
-    logger.debug("Round trip event:{}", event);
-
-    return event.getBody();
+    return getRawFlumeEvent().getBody();
   }
 
   private Event getRawFlumeEvent() {
-    Transaction transaction = channel.getTransaction();
-    transaction.begin();
-
     Event event = channel.take();
-
-    try {
-      transaction.commit();
-    } catch (Throwable t) {
-      transaction.rollback();
-    } finally {
-      transaction.close();
-    }
-
     logger.debug("Round trip event:{}", event);
 
     return event;

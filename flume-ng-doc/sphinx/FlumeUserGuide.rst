@@ -1487,9 +1487,10 @@ Property Name    Default      Description
 **type**         --           The component type name, needs to be ``netcat``
 **bind**         --           Host name or IP address to bind to
 **port**         --           Port # to bind to
-max-line-length  512          Max line length per event body (in bytes)
+max-line-length  512          Max line length per event body (in characters, including newline)
 ack-every-event  true         Respond for every event received
 ack-message      "OK\\n"      The response message sent back after receiving an event.
+                              To add a line break to your message, use \\n escape sequence.
 selector.type    replicating  replicating or multiplexing
 selector.*                    Depends on the selector.type value
 interceptors     --           Space-separated list of interceptors
